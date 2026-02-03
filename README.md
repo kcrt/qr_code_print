@@ -1,5 +1,7 @@
 # QR Code Print
 
+<img src="materials/logo.webp" width="200" alt="QR Code Print Logo">
+
 A cross-platform Rust application that generates PDFs with QR codes and text based on CSV data and placement specifications.
 
 ## Features
