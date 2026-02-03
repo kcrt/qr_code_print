@@ -1,3 +1,11 @@
+//! PDF content stream generation for QR codes and text.
+//!
+//! This module provides:
+//! - QR code generation and embedding
+//! - Text rendering with standard and CID fonts
+//! - PDF content stream building
+//! - String encoding for PDF (ASCII and UTF-16BE)
+
 use anyhow::{anyhow, Context, Result};
 use crate::config::FieldSpec;
 use image::{ImageBuffer, Luma};
@@ -96,14 +104,22 @@ impl ContentBuilder {
         // Check if the text requires CID font (non-ASCII)
         let needs_cid = value.chars().any(|c| c > '\u{7F}');
 
-        if needs_cid && self.cid_font_name.is_some() {
-            // Use CID font with hex encoding for non-ASCII text
-            let cid_font_name = self.cid_font_name.as_ref().unwrap();
-            let hex_value = encode_cid_text(value);
-            self.content_parts.push(format!(
-                "q BT 0 g /{} {} Tf {} {} Td <{}> Tj ET Q ",
-                cid_font_name, font_size, x, y - font_size, hex_value
-            ));
+        if needs_cid {
+            if let Some(cid_font_name) = &self.cid_font_name {
+                // Use CID font with hex encoding for non-ASCII text
+                let hex_value = encode_cid_text(value);
+                self.content_parts.push(format!(
+                    "q BT 0 g /{} {} Tf {} {} Td <{}> Tj ET Q ",
+                    cid_font_name, font_size, x, y - font_size, hex_value
+                ));
+            } else {
+                // Fallback to regular font (may not display correctly)
+                let escaped_value = escape_pdf_string(value);
+                self.content_parts.push(format!(
+                    "q BT 0 g /{} {} Tf {} {} Td ({}) Tj ET Q ",
+                    self.font_name, font_size, x, y - font_size, escaped_value
+                ));
+            }
         } else {
             // Use regular font with escaped text for ASCII-only text
             let escaped_value = escape_pdf_string(value);

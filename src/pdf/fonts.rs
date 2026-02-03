@@ -1,3 +1,11 @@
+//! Font management and embedding for PDF documents.
+//!
+//! This module provides functionality for:
+//! - Standard PDF Type1 fonts (Helvetica, Times, Courier)
+//! - TrueType font embedding
+//! - CID-keyed fonts for CJK character support
+//! - System font discovery and loading
+
 use anyhow::{Context, Result};
 use lopdf::{Dictionary, Document, Object, Stream, StringFormat};
 use std::fs;
@@ -95,6 +103,37 @@ pub fn create_true_type_font(
     embed_true_type_font_data(doc, &font_data, font_name)
 }
 
+/// Create a basic font descriptor with default values
+fn create_font_descriptor(font_name: &str) -> Dictionary {
+    let mut font_descriptor = Dictionary::new();
+    font_descriptor.set("Type", "FontDescriptor");
+    font_descriptor.set("FontName", font_name);
+    font_descriptor.set("Flags", 4i64); // Symbolic
+    font_descriptor.set("FontBBox", vec![0i64, 0i64, 1000i64, 1000i64].into_iter().map(Object::Integer).collect::<Vec<_>>());
+    font_descriptor.set("ItalicAngle", 0i64);
+    font_descriptor.set("Ascent", 1000i64);
+    font_descriptor.set("Descent", -200i64);
+    font_descriptor.set("CapHeight", 700i64);
+    font_descriptor.set("StemV", 80i64);
+    font_descriptor
+}
+
+/// Embed font data and create a font stream in the document
+fn embed_font_stream(doc: &mut Document, font_data: &[u8], descriptor_id: (u32, u16)) -> Result<()> {
+    let mut font_stream_dict = Dictionary::new();
+    font_stream_dict.set("Length1", font_data.len() as i64);
+
+    let font_stream = Stream::new(font_stream_dict, font_data.to_vec());
+    let font_stream_id = doc.add_object(font_stream);
+
+    // Set the font file in the descriptor
+    if let Ok(descriptor) = doc.get_dictionary_mut(descriptor_id) {
+        descriptor.set("FontFile2", Object::Reference(font_stream_id));
+    }
+
+    Ok(())
+}
+
 /// Embed a TrueType font from raw data
 ///
 /// This allows using custom fonts loaded from memory
@@ -110,44 +149,13 @@ pub fn embed_true_type_font_data(
     font_dict.set("Subtype", "TrueType");
     font_dict.set("BaseFont", font_name);
 
-    // Create font descriptor
-    let mut font_descriptor = Dictionary::new();
-    font_descriptor.set("Type", "FontDescriptor");
-    font_descriptor.set("FontName", font_name);
-
-    // Estimate font flags (for simplicity, using symbolic font flags)
-    font_descriptor.set("Flags", 4i64); // Symbolic
-
-    // Font bounding box - using conservative defaults
-    font_descriptor.set("FontBBox", vec![0i64, 0i64, 1000i64, 1000i64].into_iter().map(Object::Integer).collect::<Vec<_>>());
-
-    // Italic angle
-    font_descriptor.set("ItalicAngle", 0i64);
-
-    // Ascent and descent (typical values)
-    font_descriptor.set("Ascent", 1000i64);
-    font_descriptor.set("Descent", -200i64);
-
-    // Cap height
-    font_descriptor.set("CapHeight", 700i64);
-
-    // Stem width (average width)
-    font_descriptor.set("StemV", 80i64);
-
+    // Create and embed font descriptor
+    let font_descriptor = create_font_descriptor(font_name);
     let descriptor_id = doc.add_object(Object::Dictionary(font_descriptor));
     font_dict.set("FontDescriptor", Object::Reference(descriptor_id));
 
     // Embed the font program
-    let mut font_stream_dict = Dictionary::new();
-    font_stream_dict.set("Length1", font_data.len() as i64);
-
-    let font_stream = Stream::new(font_stream_dict, font_data.to_vec());
-    let font_stream_id = doc.add_object(font_stream);
-
-    // Set the font file in the descriptor
-    if let Ok(descriptor) = doc.get_dictionary_mut(descriptor_id) {
-        descriptor.set("FontFile2", Object::Reference(font_stream_id));
-    }
+    embed_font_stream(doc, font_data, descriptor_id)?;
 
     let font_id = doc.add_object(Object::Dictionary(font_dict));
 
@@ -221,32 +229,13 @@ pub fn embed_cid_font(
         cid_font.set("CIDToGIDMap", "Identity");
     }
 
-    // Create font descriptor
-    let mut font_descriptor = Dictionary::new();
-    font_descriptor.set("Type", "FontDescriptor");
-    font_descriptor.set("FontName", font_name);
-    font_descriptor.set("Flags", 4i64); // Symbolic
-    font_descriptor.set("FontBBox", vec![0i64, 0i64, 1000i64, 1000i64].into_iter().map(Object::Integer).collect::<Vec<_>>());
-    font_descriptor.set("ItalicAngle", 0i64);
-    font_descriptor.set("Ascent", 1000i64);
-    font_descriptor.set("Descent", -200i64);
-    font_descriptor.set("CapHeight", 700i64);
-    font_descriptor.set("StemV", 80i64);
-
+    // Create and embed font descriptor (using common helper)
+    let font_descriptor = create_font_descriptor(font_name);
     let descriptor_id = doc.add_object(Object::Dictionary(font_descriptor));
     cid_font.set("FontDescriptor", Object::Reference(descriptor_id));
 
-    // Embed the font program
-    let mut font_stream_dict = Dictionary::new();
-    font_stream_dict.set("Length1", font_data.len() as i64);
-
-    let font_stream = Stream::new(font_stream_dict, font_data.to_vec());
-    let font_stream_id = doc.add_object(font_stream);
-
-    // Set the font file in the descriptor
-    if let Ok(descriptor) = doc.get_dictionary_mut(descriptor_id) {
-        descriptor.set("FontFile2", Object::Reference(font_stream_id));
-    }
+    // Embed the font program (using common helper)
+    embed_font_stream(doc, font_data, descriptor_id)?;
 
     let cid_font_id = doc.add_object(Object::Dictionary(cid_font));
 
@@ -314,7 +303,7 @@ pub fn find_system_font(font_name: &str) -> Option<String> {
         if let Ok(entries) = fs::read_dir(&font_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()).map_or(false, |e| {
+                if path.extension().and_then(|s| s.to_str()).is_some_and(|e| {
                     extensions.contains(&e.to_lowercase().as_str())
                 }) {
                     let stem = path.file_stem()?.to_str()?;
@@ -329,18 +318,12 @@ pub fn find_system_font(font_name: &str) -> Option<String> {
     None
 }
 
-/// Find a CID font that supports Unicode text
-///
-/// Searches for CJK fonts in the system that can render non-ASCII text.
-/// If preferred_font is provided, tries to use that font first.
-pub fn find_cid_font(preferred_font: Option<&str>) -> Option<(Vec<u8>, String)> {
-    let mut db = Database::new();
-
-    // Load system fonts
+/// Load system fonts into a fontdb database
+fn load_system_fonts_into_db(db: &mut Database) {
     if cfg!(target_os = "macos") {
         db.load_system_fonts();
     } else if cfg!(target_os = "windows") {
-        if let Ok(_) = std::env::var("WINDIR") {
+        if std::env::var("WINDIR").is_ok() {
             let font_dir = std::path::PathBuf::from("C:\\Windows\\Fonts");
             db.load_fonts_dir(font_dir);
         }
@@ -359,6 +342,17 @@ pub fn find_cid_font(preferred_font: Option<&str>) -> Option<(Vec<u8>, String)> 
             }
         }
     }
+}
+
+/// Find a CID font that supports Unicode text
+///
+/// Searches for CJK fonts in the system that can render non-ASCII text.
+/// If preferred_font is provided, tries to use that font first.
+pub fn find_cid_font(preferred_font: Option<&str>) -> Option<(Vec<u8>, String)> {
+    let mut db = Database::new();
+
+    // Load system fonts using helper
+    load_system_fonts_into_db(&mut db);
 
     // Build font family list: preferred font first, then fallbacks
     let mut font_families = Vec::new();
@@ -394,8 +388,8 @@ pub fn find_cid_font(preferred_font: Option<&str>) -> Option<(Vec<u8>, String)> 
             ..Default::default()
         };
 
-        if let Some(id) = db.query(&query) {
-            if let Some((source, index)) = db.face_source(id) {
+        if let Some(id) = db.query(&query)
+            && let Some((source, index)) = db.face_source(id) {
                 match source {
                     fontdb::Source::File(path) => {
                         // Try to read the font file
@@ -419,7 +413,6 @@ pub fn find_cid_font(preferred_font: Option<&str>) -> Option<(Vec<u8>, String)> 
                     _ => {}
                 }
             }
-        }
     }
 
     None

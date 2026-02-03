@@ -1,3 +1,11 @@
+//! PDF document generation with QR codes and text overlays.
+//!
+//! This module handles:
+//! - Creating output PDFs from base templates
+//! - Adding QR codes and text to pages
+//! - Font selection and embedding (standard and CID fonts)
+//! - Page cloning and resource management
+
 use anyhow::{anyhow, Context, Result};
 use lopdf::{Dictionary, Document, Object};
 use crate::config::{DataRow, PlaceConfig};
@@ -14,12 +22,11 @@ fn needs_cid_font(text: &str) -> bool {
 /// Collect all text from data rows to check if CID font is needed
 fn should_use_cid_font(data_rows: &[DataRow], config: &PlaceConfig) -> bool {
     for row in data_rows {
-        for (field_name, _field_spec) in &config.fields {
-            if let Some(value) = row.data.get(field_name) {
-                if needs_cid_font(value) {
+        for field_name in config.fields.keys() {
+            if let Some(value) = row.data.get(field_name)
+                && needs_cid_font(value) {
                     return true;
                 }
-            }
         }
     }
     false
@@ -31,6 +38,32 @@ struct FontRefs {
     regular_name: String,
     cid_id: Option<(u32, u16)>,
     cid_name: Option<String>,
+}
+
+impl FontRefs {
+    /// Create a ContentBuilder with the appropriate fonts configured
+    fn create_content_builder(&self) -> ContentBuilder {
+        if let Some(ref cid_name) = self.cid_name {
+            ContentBuilder::new_with_cid_font(self.regular_name.clone(), cid_name.clone())
+        } else {
+            ContentBuilder::new(self.regular_name.clone())
+        }
+    }
+}
+
+/// Populate a ContentBuilder with fields from a data row
+fn populate_content_builder(
+    builder: &mut ContentBuilder,
+    row: &DataRow,
+    config: &PlaceConfig,
+    page_height: f64,
+    doc: &mut Document,
+) -> Result<()> {
+    for (field_name, field_spec) in &config.fields {
+        let value = row.data.get(field_name).map(|s| s.as_str()).unwrap_or("");
+        builder.add_field(field_name, value, field_spec, page_height, doc)?;
+    }
+    Ok(())
 }
 
 /// Create a single page with content for a given data row
@@ -48,17 +81,11 @@ fn create_page_for_row(
     // Add the cloned page to the document
     let page_id = output_doc.add_object(Object::Dictionary(page_dict));
 
-    // Build overlay content for this row
-    let mut builder = if let Some(ref cid_name) = fonts.cid_name {
-        ContentBuilder::new_with_cid_font(fonts.regular_name.clone(), cid_name.clone())
-    } else {
-        ContentBuilder::new(fonts.regular_name.clone())
-    };
+    // Build overlay content for this row using the helper method
+    let mut builder = fonts.create_content_builder();
 
-    for (field_name, field_spec) in &config.fields {
-        let value = row.data.get(field_name).map(|s| s.as_str()).unwrap_or("");
-        builder.add_field(field_name, value, field_spec, page_height, output_doc)?;
-    }
+    // Populate builder with content from the row
+    populate_content_builder(&mut builder, row, config, page_height, output_doc)?;
 
     // Append overlay content to the cloned page
     let overlay_bytes = builder.build_content_bytes();
@@ -177,16 +204,10 @@ pub fn create_output_pdf(
 
     // Add content to the first page (base page) for the first row
     if let Some(first_row) = data_rows.first() {
-        let mut builder = if let Some(ref cid_name) = fonts.cid_name {
-            ContentBuilder::new_with_cid_font(fonts.regular_name.clone(), cid_name.clone())
-        } else {
-            ContentBuilder::new(fonts.regular_name.clone())
-        };
+        let mut builder = fonts.create_content_builder();
 
-        for (field_name, field_spec) in &config.fields {
-            let value = first_row.data.get(field_name).map(|s| s.as_str()).unwrap_or("");
-            builder.add_field(field_name, value, field_spec, page_height, &mut output_doc)?;
-        }
+        // Populate builder with content from the first row
+        populate_content_builder(&mut builder, first_row, config, page_height, &mut output_doc)?;
 
         // Append new content to the base page
         let new_content = builder.build_content_bytes();
