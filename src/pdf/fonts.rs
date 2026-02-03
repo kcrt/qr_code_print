@@ -169,8 +169,8 @@ pub fn embed_cid_font(
     cid_font.set("BaseFont", font_name);
     cid_font.set("CIDSystemInfo", {
         let mut cid_system = Dictionary::new();
-        cid_system.set("Registry", Object::String("Adobe".into(), lopdf::StringFormat::Literal));
-        cid_system.set("Ordering", Object::String("Identity".into(), lopdf::StringFormat::Literal));
+        cid_system.set("Registry", Object::String("Adobe".into(), StringFormat::Literal));
+        cid_system.set("Ordering", Object::String("Identity".into(), StringFormat::Literal));
         cid_system.set("Supplement", 0i64);
         Object::Dictionary(cid_system)
     });
