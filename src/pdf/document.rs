@@ -1,3 +1,11 @@
+//! PDF document generation with QR codes and text overlays.
+//!
+//! This module handles:
+//! - Creating output PDFs from base templates
+//! - Adding QR codes and text to pages
+//! - Font selection and embedding (standard and CID fonts)
+//! - Page cloning and resource management
+
 use anyhow::{anyhow, Context, Result};
 use lopdf::{Dictionary, Document, Object};
 use crate::config::{DataRow, PlaceConfig};
@@ -14,12 +22,11 @@ fn needs_cid_font(text: &str) -> bool {
 /// Collect all text from data rows to check if CID font is needed
 fn should_use_cid_font(data_rows: &[DataRow], config: &PlaceConfig) -> bool {
     for row in data_rows {
-        for (field_name, _field_spec) in &config.fields {
-            if let Some(value) = row.data.get(field_name) {
-                if needs_cid_font(value) {
+        for field_name in config.fields.keys() {
+            if let Some(value) = row.data.get(field_name)
+                && needs_cid_font(value) {
                     return true;
                 }
-            }
         }
     }
     false

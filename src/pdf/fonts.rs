@@ -1,3 +1,11 @@
+//! Font management and embedding for PDF documents.
+//!
+//! This module provides functionality for:
+//! - Standard PDF Type1 fonts (Helvetica, Times, Courier)
+//! - TrueType font embedding
+//! - CID-keyed fonts for CJK character support
+//! - System font discovery and loading
+
 use anyhow::{Context, Result};
 use lopdf::{Dictionary, Document, Object, Stream, StringFormat};
 use std::fs;
@@ -295,7 +303,7 @@ pub fn find_system_font(font_name: &str) -> Option<String> {
         if let Ok(entries) = fs::read_dir(&font_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()).map_or(false, |e| {
+                if path.extension().and_then(|s| s.to_str()).is_some_and(|e| {
                     extensions.contains(&e.to_lowercase().as_str())
                 }) {
                     let stem = path.file_stem()?.to_str()?;
@@ -380,8 +388,8 @@ pub fn find_cid_font(preferred_font: Option<&str>) -> Option<(Vec<u8>, String)> 
             ..Default::default()
         };
 
-        if let Some(id) = db.query(&query) {
-            if let Some((source, index)) = db.face_source(id) {
+        if let Some(id) = db.query(&query)
+            && let Some((source, index)) = db.face_source(id) {
                 match source {
                     fontdb::Source::File(path) => {
                         // Try to read the font file
@@ -405,7 +413,6 @@ pub fn find_cid_font(preferred_font: Option<&str>) -> Option<(Vec<u8>, String)> 
                     _ => {}
                 }
             }
-        }
     }
 
     None

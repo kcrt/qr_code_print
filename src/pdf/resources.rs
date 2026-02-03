@@ -1,3 +1,9 @@
+//! PDF page resource management.
+//!
+//! This module handles updating page resources dictionaries with:
+//! - Font references (standard and CID fonts)
+//! - XObject references (images, QR codes)
+
 use lopdf::{Dictionary, Document, Object};
 
 /// Update a page's resources dictionary with multiple fonts and XObjects

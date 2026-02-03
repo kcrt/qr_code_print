@@ -1,3 +1,11 @@
+//! Configuration loading and parsing.
+//!
+//! This module handles:
+//! - Loading and parsing settings.json (field placements, fonts)
+//! - Loading and parsing data.csv (content data)
+//! - Unit conversion for dimensions (mm, cm, in, pt)
+//! - Dimension type with flexible deserialization
+
 use anyhow::{Context, Result};
 use csv::ReaderBuilder;
 use serde::{Deserialize, Deserializer};
