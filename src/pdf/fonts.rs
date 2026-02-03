@@ -154,6 +154,40 @@ pub fn embed_true_type_font_data(
     Ok((font_id, font_name.to_string()))
 }
 
+/// Build a CIDToGIDMap stream from font's cmap table
+///
+/// For TrueType fonts where glyphs aren't arranged by Unicode order,
+/// we need to create a mapping from CID (character ID, which is Unicode in Identity-H)
+/// to GID (glyph ID in the font file)
+fn build_cidtogid_map(font_data: &[u8]) -> Option<Vec<u8>> {
+    // Parse the font to get the cmap
+    let face = Face::parse(font_data, 0).ok()?;
+    
+    // Build a mapping from Unicode codepoints to glyph IDs
+    // We'll create a format 2 CIDToGIDMap (simple array format)
+    // For each CID (0 to max), store the corresponding GID as a 2-byte big-endian value
+    
+    // Find the maximum codepoint we need to map (we'll map up to 0xFFFF for BMP)
+    const MAX_CID: u16 = 0xFFFF;
+    let mut gid_map: Vec<u8> = Vec::with_capacity((MAX_CID as usize + 1) * 2);
+    
+    for cid in 0..=MAX_CID {
+        // Try to get the glyph ID for this Unicode codepoint
+        // Skip invalid Unicode codepoints (surrogates, etc.)
+        let gid = if let Some(ch) = char::from_u32(cid as u32) {
+            face.glyph_index(ch).map(|g| g.0).unwrap_or(0)
+        } else {
+            0  // Use GID 0 (.notdef) for invalid codepoints
+        };
+        
+        // Write GID as big-endian u16
+        gid_map.push((gid >> 8) as u8);
+        gid_map.push((gid & 0xFF) as u8);
+    }
+    
+    Some(gid_map)
+}
+
 /// Embed a CID-keyed font for CJK characters
 ///
 /// This creates a Type0 font with a CIDFont descendant for proper CJK rendering
@@ -174,6 +208,18 @@ pub fn embed_cid_font(
         cid_system.set("Supplement", 0i64);
         Object::Dictionary(cid_system)
     });
+    
+    // Build and embed CIDToGIDMap stream for proper glyph mapping
+    // This maps Unicode codepoints (CIDs) to font glyph IDs (GIDs)
+    if let Some(cidtogid_data) = build_cidtogid_map(font_data) {
+        let cidtogid_stream = Stream::new(Dictionary::new(), cidtogid_data);
+        let cidtogid_id = doc.add_object(cidtogid_stream);
+        cid_font.set("CIDToGIDMap", Object::Reference(cidtogid_id));
+    } else {
+        // Fallback to Identity if we can't build the map
+        // This will work for fonts where glyphs are arranged by Unicode order
+        cid_font.set("CIDToGIDMap", "Identity");
+    }
 
     // Create font descriptor
     let mut font_descriptor = Dictionary::new();
