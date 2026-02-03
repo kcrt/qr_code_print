@@ -2,3 +2,5 @@
 .DS_Store
 example/output.pdf
 example/output.png
+example/page.png
+example/*.png
