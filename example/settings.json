@@ -8,7 +8,7 @@
         "type": "QR"
       },
       "ID": {
-        "x": "150 mm",
+        "x": "80 mm",
         "y": "50 mm",
         "w": "100 mm",
         "h": "30 mm",
@@ -20,6 +20,30 @@
         "w": "50 mm",
         "h": "10 mm",
         "type": "Text"
+      },
+      "Name01": {
+        "x": "50 mm",
+        "y": "220 mm",
+        "w": "50 mm",
+        "h": "10 mm",
+        "type": "Text",
+        "font_size": "5 mm"
+      },
+      "Name02": {
+        "x": "50 mm",
+        "y": "230 mm",
+        "w": "50 mm",
+        "h": "10 mm",
+        "type": "Text",
+        "font_size": "10 mm"
+      },
+      "Name03": {
+        "x": "50 mm",
+        "y": "250 mm",
+        "w": "50 mm",
+        "h": "10 mm",
+        "type": "Text",
+        "font_size": "20 mm"
       }
   },
   "settings": {

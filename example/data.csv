@@ -1,4 +1,4 @@
-URL,ID,Name
-https://example.com/item001,A001,あいう
-https://example.com/item002,B002,えお
-https://example.com/item003,C003,かきく
+URL,ID,Name,Name01,Name02,Name03
+https://example.com/item001,A001,あいう,Hello,Hello,Hello
+https://example.com/item002,B002,えお,World,World,World
+https://example.com/item003,C003,かきく,Hello,World,Hello
