@@ -99,14 +99,14 @@ impl ContentBuilder {
             let cid_font_name = self.cid_font_name.as_ref().unwrap();
             let hex_value = encode_cid_text(value);
             self.content_parts.push(format!(
-                "q BT /{} {} Tf {} {} Td <{}> Tj ET Q ",
+                "q BT 0 g /{} {} Tf {} {} Td <{}> Tj ET Q ",
                 cid_font_name, font_size, x, y - font_size, hex_value
             ));
         } else {
             // Use regular font with escaped text for ASCII-only text
             let escaped_value = escape_pdf_string(value);
             self.content_parts.push(format!(
-                "q BT /{} {} Tf {} {} Td ({}) Tj ET Q ",
+                "q BT 0 g /{} {} Tf {} {} Td ({}) Tj ET Q ",
                 self.font_name, font_size, x, y - font_size, escaped_value
             ));
         }
