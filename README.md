@@ -78,6 +78,40 @@ https://example.com/item001,A001,Item One
 https://example.com/item002,B002,Item Two
 ```
 
+## Non-ASCII Character Support
+
+The application supports non-ASCII characters (e.g., Japanese, Chinese, Korean, Cyrillic, etc.) through automatic CID font detection. When non-ASCII characters are detected in your data, the application will:
+
+1. Search for a suitable CJK font installed on your system
+2. Automatically embed the font in the output PDF
+3. Encode text using UTF-16BE format for proper rendering
+
+### Font Installation
+
+If you encounter an error about missing CID fonts when using non-ASCII characters, install a CJK font package:
+
+**Debian/Ubuntu:**
+```bash
+sudo apt-get install fonts-noto-cjk
+```
+
+**Arch Linux:**
+```bash
+sudo pacman -S noto-fonts-cjk
+```
+
+**macOS:**
+CJK fonts are typically pre-installed (Hiragino, Yu Gothic, etc.)
+
+**Windows:**
+CJK fonts are typically pre-installed (MS Gothic, MS Mincho, Meiryo, etc.)
+
+The application will automatically detect and use available fonts such as:
+- Noto Sans CJK (all platforms)
+- Hiragino Sans/Gothic (macOS)
+- MS Gothic/Mincho, Meiryo (Windows)
+- IPA Gothic/Mincho (Linux)
+
 ## Building
 
 ```bash

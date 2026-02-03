@@ -143,7 +143,11 @@ pub fn create_output_pdf(
                 .with_context(|| "Failed to embed CID font")?;
             (Some(fid), Some(fname))
         } else {
-            (None, None)
+            return Err(anyhow!(
+                "Non-ASCII characters detected in data, but no suitable CID font found on the system.\n\
+                Please install a CJK font package (e.g., fonts-noto-cjk on Debian/Ubuntu, \
+                noto-fonts-cjk on Arch, or similar packages on other distributions)."
+            ));
         }
     } else {
         (None, None)
