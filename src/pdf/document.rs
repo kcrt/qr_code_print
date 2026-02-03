@@ -2,7 +2,36 @@ use anyhow::{anyhow, Context, Result};
 use lopdf::{Dictionary, Document, Object};
 use crate::config::{DataRow, PlaceConfig};
 use super::content::ContentBuilder;
-use super::resources::update_page_resources;
+use super::resources::update_page_resources_with_fonts;
+use super::fonts::{create_font, StandardFont, find_cid_font, embed_cid_font};
+
+/// Check if the text requires CID font (non-ASCII characters)
+fn needs_cid_font(text: &str) -> bool {
+    // Check for any characters outside ASCII range
+    text.chars().any(|c| c > '\u{7F}')
+}
+
+/// Collect all text from data rows to check if CID font is needed
+fn should_use_cid_font(data_rows: &[DataRow], config: &PlaceConfig) -> bool {
+    for row in data_rows {
+        for (field_name, _field_spec) in &config.fields {
+            if let Some(value) = row.data.get(field_name) {
+                if needs_cid_font(value) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Font references for use in content generation
+struct FontRefs {
+    regular_id: (u32, u16),
+    regular_name: String,
+    cid_id: Option<(u32, u16)>,
+    cid_name: Option<String>,
+}
 
 /// Create a single page with content for a given data row
 fn create_page_for_row(
@@ -11,7 +40,7 @@ fn create_page_for_row(
     row: &DataRow,
     config: &PlaceConfig,
     page_height: f64,
-    font_id: (u32, u16),
+    fonts: &FontRefs,
 ) -> Result<(u32, u16)> {
     // Clone the base page for this row
     let page_dict = base_page.clone();
@@ -20,7 +49,11 @@ fn create_page_for_row(
     let page_id = output_doc.add_object(Object::Dictionary(page_dict));
 
     // Build overlay content for this row
-    let mut builder = ContentBuilder::new();
+    let mut builder = if let Some(ref cid_name) = fonts.cid_name {
+        ContentBuilder::new_with_cid_font(fonts.regular_name.clone(), cid_name.clone())
+    } else {
+        ContentBuilder::new(fonts.regular_name.clone())
+    };
 
     for (field_name, field_spec) in &config.fields {
         let value = row.data.get(field_name).map(|s| s.as_str()).unwrap_or("");
@@ -32,7 +65,15 @@ fn create_page_for_row(
     output_doc.add_page_contents(page_id, overlay_bytes)?;
 
     // Update the page's resources with fonts and XObjects
-    update_page_resources(output_doc, page_id, font_id, &builder.xobjects);
+    update_page_resources_with_fonts(
+        output_doc,
+        page_id,
+        fonts.regular_id,
+        &fonts.regular_name,
+        fonts.cid_id,
+        fonts.cid_name.as_deref(),
+        &builder.xobjects,
+    );
 
     Ok(page_id)
 }
@@ -90,13 +131,29 @@ pub fn create_output_pdf(
     let media_box = base_page.get(b"MediaBox")?.as_array()?;
     let page_height = (media_box[3].as_float()? - media_box[1].as_float()?) as f64;
 
-    // Create a standard font (Helvetica) for our new text
-    let font_id = {
-        let mut font_dict = Dictionary::new();
-        font_dict.set("Type", "Font");
-        font_dict.set("Subtype", "Type1");
-        font_dict.set("BaseFont", "Helvetica");
-        output_doc.add_object(Object::Dictionary(font_dict))
+    // Determine the fonts to use
+    // Always create a regular font for ASCII text
+    let regular_font = StandardFont::from_name("Helvetica").unwrap_or(StandardFont::Helvetica);
+    let (regular_font_id, regular_font_name) = create_font(&mut output_doc, regular_font)?;
+
+    // Create a CID font if non-ASCII text is detected
+    let (cid_font_id, cid_font_name) = if should_use_cid_font(data_rows, config) {
+        if let Some((font_data, font_name)) = find_cid_font() {
+            let (fid, fname) = embed_cid_font(&mut output_doc, &font_data, &font_name)
+                .with_context(|| "Failed to embed CID font")?;
+            (Some(fid), Some(fname))
+        } else {
+            (None, None)
+        }
+    } else {
+        (None, None)
+    };
+
+    let fonts = FontRefs {
+        regular_id: regular_font_id,
+        regular_name: regular_font_name,
+        cid_id: cid_font_id,
+        cid_name: cid_font_name,
     };
 
     // Create additional pages for each row (beyond the first)
@@ -109,14 +166,18 @@ pub fn create_output_pdf(
             row,
             config,
             page_height,
-            font_id,
+            &fonts,
         )?;
         additional_page_ids.push(page_id);
     }
 
     // Add content to the first page (base page) for the first row
     if let Some(first_row) = data_rows.first() {
-        let mut builder = ContentBuilder::new();
+        let mut builder = if let Some(ref cid_name) = fonts.cid_name {
+            ContentBuilder::new_with_cid_font(fonts.regular_name.clone(), cid_name.clone())
+        } else {
+            ContentBuilder::new(fonts.regular_name.clone())
+        };
 
         for (field_name, field_spec) in &config.fields {
             let value = first_row.data.get(field_name).map(|s| s.as_str()).unwrap_or("");
@@ -133,7 +194,15 @@ pub fn create_output_pdf(
         output_doc.add_page_contents(first_page_id, new_content)?;
 
         // Update the first page's resources
-        update_page_resources(&mut output_doc, first_page_id, font_id, &builder.xobjects);
+        update_page_resources_with_fonts(
+            &mut output_doc,
+            first_page_id,
+            fonts.regular_id,
+            &fonts.regular_name,
+            fonts.cid_id,
+            fonts.cid_name.as_deref(),
+            &builder.xobjects,
+        );
     }
 
     // Update the pages dictionary to include all new pages

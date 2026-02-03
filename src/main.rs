@@ -2,20 +2,38 @@ mod config;
 mod pdf;
 
 use anyhow::{anyhow, Context, Result};
+use clap::Parser;
 use lopdf::Document;
+use std::path::PathBuf;
 
 use config::{load_base_pdf, load_csv_data, load_settings_config};
 use pdf::create_output_pdf;
 
-fn run() -> Result<()> {
-    // Get the current directory
-    let current_dir = std::env::current_dir()?;
+/// Generate QR codes and place them on a PDF template.
+#[derive(Parser, Debug)]
+#[command(name = "qr_code_print")]
+#[command(about = "Generate QR codes and place them on a PDF template.", long_about = None)]
+struct Args {
+    /// Target directory containing base.pdf, settings.json, and data.csv
+    /// output.pdf will be saved in this directory
+    #[arg(short, long, default_value = ".")]
+    target_dir: PathBuf,
+}
+
+fn run(target_dir: PathBuf) -> Result<()> {
+    // Verify the target directory exists
+    if !target_dir.exists() {
+        return Err(anyhow!("Target directory not found: {:?}", target_dir));
+    }
+    if !target_dir.is_dir() {
+        return Err(anyhow!("Target path is not a directory: {:?}", target_dir));
+    }
 
     // Define file paths
-    let settings_json_path = current_dir.join("settings.json");
-    let data_csv_path = current_dir.join("data.csv");
-    let base_pdf_path = current_dir.join("base.pdf");
-    let output_pdf_path = current_dir.join("output.pdf");
+    let settings_json_path = target_dir.join("settings.json");
+    let data_csv_path = target_dir.join("data.csv");
+    let base_pdf_path = target_dir.join("base.pdf");
+    let output_pdf_path = target_dir.join("output.pdf");
 
     // Check if required files exist
     for path in [&settings_json_path, &data_csv_path, &base_pdf_path].iter() {
@@ -46,7 +64,9 @@ fn run() -> Result<()> {
 }
 
 fn main() {
-    if let Err(e) = run() {
+    let args = Args::parse();
+
+    if let Err(e) = run(args.target_dir) {
         eprintln!("Error: {}", e);
         for cause in e.chain().skip(1) {
             eprintln!("Caused by: {}", cause);

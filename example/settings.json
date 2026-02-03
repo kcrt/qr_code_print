@@ -1,0 +1,28 @@
+{
+  "fields": {
+      "URL": {
+        "x": "50 mm",
+        "y": "50 mm",
+        "w": "100 mm",
+        "h": "100 mm",
+        "type": "QR"
+      },
+      "ID": {
+        "x": "150 mm",
+        "y": "100 mm",
+        "w": "100 mm",
+        "h": "30 mm",
+        "type": "Text"
+      },
+      "Name": {
+        "x": "50 mm",
+        "y": "200 mm",
+        "w": "50 mm",
+        "h": "10 mm",
+        "type": "Text"
+      }
+  },
+  "settings": {
+    "font": "Meiryo UI"
+  }
+}

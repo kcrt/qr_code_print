@@ -12,14 +12,28 @@ const QR_SIZE: u32 = 200;
 pub struct ContentBuilder {
     pub content_parts: Vec<String>,
     pub xobjects: Dictionary,
+    font_name: String,
+    cid_font_name: Option<String>,
 }
 
 impl ContentBuilder {
-    /// Create a new ContentBuilder
-    pub fn new() -> Self {
+    /// Create a new ContentBuilder with the given font name
+    pub fn new(font_name: String) -> Self {
         Self {
             content_parts: Vec::new(),
             xobjects: Dictionary::new(),
+            font_name,
+            cid_font_name: None,
+        }
+    }
+
+    /// Create a new ContentBuilder with CID font support
+    pub fn new_with_cid_font(font_name: String, cid_font_name: String) -> Self {
+        Self {
+            content_parts: Vec::new(),
+            xobjects: Dictionary::new(),
+            font_name,
+            cid_font_name: Some(cid_font_name),
         }
     }
 
@@ -57,10 +71,10 @@ impl ContentBuilder {
         self.xobjects.set(img_name.clone(), Object::Reference(img_id));
 
         // Calculate PDF coordinates (flip Y axis)
-        let x = spec.x;
-        let y = page_height - spec.y - spec.h;
-        let w = spec.w;
-        let h = spec.h;
+        let x = spec.x.as_points();
+        let y = page_height - spec.y.as_points() - spec.h.as_points();
+        let w = spec.w.as_points();
+        let h = spec.h.as_points();
 
         // Add content stream commands for drawing the image
         self.content_parts.push(format!(
@@ -73,15 +87,29 @@ impl ContentBuilder {
 
     /// Add a text field to the content
     pub fn add_text(&mut self, value: &str, spec: &FieldSpec, page_height: f64) {
-        let x = spec.x;
-        let y = page_height - spec.y;
-        let font_size = spec.h.min(spec.w * 0.5);
-        let escaped_value = escape_pdf_string(value);
+        let x = spec.x.as_points();
+        let y = page_height - spec.y.as_points();
+        let font_size = spec.h.as_points().min(spec.w.as_points() * 0.5);
 
-        self.content_parts.push(format!(
-            "q BT /F1 {} Tf {} {} Td ({}) Tj ET Q ",
-            font_size, x, y - font_size, escaped_value
-        ));
+        // Check if the text requires CID font (non-ASCII)
+        let needs_cid = value.chars().any(|c| c > '\u{7F}');
+
+        if needs_cid && self.cid_font_name.is_some() {
+            // Use CID font with hex encoding for non-ASCII text
+            let cid_font_name = self.cid_font_name.as_ref().unwrap();
+            let hex_value = encode_cid_text(value);
+            self.content_parts.push(format!(
+                "q BT /{} {} Tf {} {} Td <{}> Tj ET Q ",
+                cid_font_name, font_size, x, y - font_size, hex_value
+            ));
+        } else {
+            // Use regular font with escaped text for ASCII-only text
+            let escaped_value = escape_pdf_string(value);
+            self.content_parts.push(format!(
+                "q BT /{} {} Tf {} {} Td ({}) Tj ET Q ",
+                self.font_name, font_size, x, y - font_size, escaped_value
+            ));
+        }
     }
 
     /// Add a field based on its type
@@ -115,7 +143,7 @@ impl ContentBuilder {
 
 impl Default for ContentBuilder {
     fn default() -> Self {
-        Self::new()
+        Self::new("F1".to_string())
     }
 }
 
@@ -134,6 +162,40 @@ pub fn escape_pdf_string(s: &str) -> String {
         }
     }
     result
+}
+
+/// Encode text for CID font (Identity-H encoding)
+///
+/// Converts text to UTF-16BE and returns hex representation
+pub fn encode_cid_text(s: &str) -> String {
+    let mut utf16be: Vec<u8> = Vec::new();
+
+    // Add BOM (Byte Order Mark) for UTF-16BE if needed
+    // Actually for Identity-H, we don't need BOM, just the raw UTF-16BE bytes
+
+    for c in s.chars() {
+        let code = c as u32;
+        if code <= 0xFFFF {
+            // BMP character - directly encode as UTF-16BE
+            utf16be.push((code >> 8) as u8);
+            utf16be.push((code & 0xFF) as u8);
+        } else {
+            // Supplementary character - needs surrogate pair
+            let code = code - 0x10000;
+            let high_surrogate = 0xD800 + ((code >> 10) & 0x3FF);
+            let low_surrogate = 0xDC00 + (code & 0x3FF);
+            utf16be.push((high_surrogate >> 8) as u8);
+            utf16be.push((high_surrogate & 0xFF) as u8);
+            utf16be.push((low_surrogate >> 8) as u8);
+            utf16be.push((low_surrogate & 0xFF) as u8);
+        }
+    }
+
+    // Convert to hex string
+    utf16be.iter()
+        .map(|b| format!("{:02X}", b))
+        .collect::<Vec<_>>()
+        .join("")
 }
 
 /// Compress data using zlib/flate2
@@ -179,19 +241,19 @@ mod tests {
 
     #[test]
     fn test_content_builder_new() {
-        let builder = ContentBuilder::new();
+        let builder = ContentBuilder::new("F1".to_string());
         assert!(builder.content_parts.is_empty());
         assert!(builder.xobjects.is_empty());
     }
 
     #[test]
     fn test_content_builder_add_text() {
-        let mut builder = ContentBuilder::new();
+        let mut builder = ContentBuilder::new("F1".to_string());
         let spec = FieldSpec {
-            x: 100.0,
-            y: 200.0,
-            w: 50.0,
-            h: 12.0,
+            x: crate::config::Dimension(100.0),
+            y: crate::config::Dimension(200.0),
+            w: crate::config::Dimension(50.0),
+            h: crate::config::Dimension(12.0),
             output_type: "Text".to_string(),
         };
 
