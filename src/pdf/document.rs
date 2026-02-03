@@ -145,7 +145,7 @@ pub fn create_output_pdf(
         } else {
             return Err(anyhow!(
                 "Non-ASCII characters detected in data, but no suitable CID font found on the system.\n\
-                Please install a CJK font package (e.g., fonts-noto-cjk on Debian/Ubuntu, \n\
+                Please install a CJK font package (e.g., fonts-noto-cjk on Debian/Ubuntu, \
                 noto-fonts-cjk on Arch, or similar packages on other distributions)."
             ));
         }
