@@ -101,6 +101,8 @@ pub struct FieldSpec {
     pub h: Dimension,
     #[serde(rename = "type")]
     pub output_type: String,
+    #[serde(default)]
+    pub font_size: Option<Dimension>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -279,5 +281,35 @@ mod tests {
         assert!((spec.y.as_points() - 283.46).abs() < 0.01);  // 10 cm
         assert_eq!(spec.w.as_points(), 72.0);                 // 1 inch
         assert_eq!(spec.h.as_points(), 50.0);                 // 50 pt
+        assert!(spec.font_size.is_none());
+    }
+
+    #[test]
+    fn test_field_spec_with_font_size() {
+        let json = json!({
+            "x": "50 mm",
+            "y": "10 cm",
+            "w": "1 in",
+            "h": "50 pt",
+            "type": "Text",
+            "font_size": "12 pt"
+        });
+        let spec: FieldSpec = serde_json::from_value(json).unwrap();
+        assert_eq!(spec.font_size.unwrap().as_points(), 12.0);
+    }
+
+    #[test]
+    fn test_field_spec_with_font_size_mm() {
+        let json = json!({
+            "x": "50 mm",
+            "y": "10 cm",
+            "w": "1 in",
+            "h": "50 pt",
+            "type": "Text",
+            "font_size": "5 mm"
+        });
+        let spec: FieldSpec = serde_json::from_value(json).unwrap();
+        // 5 mm = 5 * 72 / 25.4 points ≈ 14.17
+        assert!((spec.font_size.unwrap().as_points() - 14.17).abs() < 0.01);
     }
 }

@@ -89,7 +89,9 @@ impl ContentBuilder {
     pub fn add_text(&mut self, value: &str, spec: &FieldSpec, page_height: f64) {
         let x = spec.x.as_points();
         let y = page_height - spec.y.as_points();
-        let font_size = spec.h.as_points().min(spec.w.as_points() * 0.5);
+        let font_size = spec.font_size
+            .map(|d| d.as_points())
+            .unwrap_or_else(|| spec.h.as_points().min(spec.w.as_points() * 0.5));
 
         // Check if the text requires CID font (non-ASCII)
         let needs_cid = value.chars().any(|c| c > '\u{7F}');
@@ -255,6 +257,7 @@ mod tests {
             w: crate::config::Dimension(50.0),
             h: crate::config::Dimension(12.0),
             output_type: "Text".to_string(),
+            font_size: None,
         };
 
         builder.add_text("Hello", &spec, 800.0);
