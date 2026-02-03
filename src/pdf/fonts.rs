@@ -331,8 +331,9 @@ pub fn find_system_font(font_name: &str) -> Option<String> {
 
 /// Find a CID font that supports Unicode text
 ///
-/// Searches for CJK fonts in the system that can render non-ASCII text
-pub fn find_cid_font() -> Option<(Vec<u8>, String)> {
+/// Searches for CJK fonts in the system that can render non-ASCII text.
+/// If preferred_font is provided, tries to use that font first.
+pub fn find_cid_font(preferred_font: Option<&str>) -> Option<(Vec<u8>, String)> {
     let mut db = Database::new();
 
     // Load system fonts
@@ -359,8 +360,16 @@ pub fn find_cid_font() -> Option<(Vec<u8>, String)> {
         }
     }
 
-    // Common Japanese font family names to try
-    let font_families = [
+    // Build font family list: preferred font first, then fallbacks
+    let mut font_families = Vec::new();
+
+    // Add preferred font if specified
+    if let Some(font) = preferred_font {
+        font_families.push(font);
+    }
+
+    // Common Japanese font family names to try as fallbacks
+    font_families.extend([
         "Hiragino Kaku Gothic Pro",
         "Hiragino Kaku Gothic ProN",
         "Hiragino Sans",
@@ -376,7 +385,7 @@ pub fn find_cid_font() -> Option<(Vec<u8>, String)> {
         "Meiryo",
         "MS Gothic",
         "MS Mincho",
-    ];
+    ]);
 
     for family in &font_families {
         let family_ref = fontdb::Family::Name(family);

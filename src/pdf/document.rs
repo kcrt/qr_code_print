@@ -138,7 +138,7 @@ pub fn create_output_pdf(
 
     // Create a CID font if non-ASCII text is detected
     let (cid_font_id, cid_font_name) = if should_use_cid_font(data_rows, config) {
-        if let Some((font_data, font_name)) = find_cid_font() {
+        if let Some((font_data, font_name)) = find_cid_font(config.settings.font.as_deref()) {
             let (fid, fname) = embed_cid_font(&mut output_doc, &font_data, &font_name)
                 .with_context(|| "Failed to embed CID font")?;
             (Some(fid), Some(fname))
